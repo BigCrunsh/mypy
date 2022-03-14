@@ -26,7 +26,7 @@ def lookup_fully_qualified(name: str, modules: Dict[str, MypyFile], *,
     while True:
         if '.' not in head:
             if raise_on_missing:
-                assert '.' in head, "Cannot find module for %s" % (name,)
+                assert '.' in head, f"Cannot find module for {name}"
             return None
         head, tail = head.rsplit('.', maxsplit=1)
         rest.append(tail)
@@ -38,10 +38,10 @@ def lookup_fully_qualified(name: str, modules: Dict[str, MypyFile], *,
     if not rest:
         # Looks like a module, don't use this to avoid confusions.
         if raise_on_missing:
-            assert rest, "Cannot find %s, got a module symbol" % (name,)
+            assert rest, f"Cannot find {name}, got a module symbol"
         return None
+    key = rest.pop()
     while True:
-        key = rest.pop()
         if key not in names:
             if raise_on_missing:
                 assert key in names, "Cannot find component %r for %r" % (key, name)
@@ -54,6 +54,6 @@ def lookup_fully_qualified(name: str, modules: Dict[str, MypyFile], *,
         # or a Var made up for a missing module.
         if not isinstance(node, TypeInfo):
             if raise_on_missing:
-                assert node, "Cannot find %s" % (name,)
+                assert node, f"Cannot find {name}"
             return None
         names = node.names

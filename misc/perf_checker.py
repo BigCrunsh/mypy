@@ -48,7 +48,7 @@ def execute(command: List[str]) -> None:
 
 def trial(num_trials: int, command: Command) -> List[float]:
     trials = []
-    for i in range(num_trials):
+    for _ in range(num_trials):
         command.setup()
         start = time.time()
         command.command()
@@ -58,10 +58,10 @@ def trial(num_trials: int, command: Command) -> List[float]:
 
 
 def report(name: str, times: List[float]) -> None:
-    print("{}:".format(name))
-    print("  Times: {}".format(times))
-    print("  Mean:  {}".format(statistics.mean(times)))
-    print("  Stdev: {}".format(statistics.stdev(times)))
+    print(f"{name}:")
+    print(f"  Times: {times}")
+    print(f"  Mean:  {statistics.mean(times)}")
+    print(f"  Stdev: {statistics.stdev(times)}")
     print()
 
 
