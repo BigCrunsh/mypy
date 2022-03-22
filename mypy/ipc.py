@@ -51,21 +51,20 @@ class IPCBase:
     def read(self, size: int = 100000) -> bytes:
         """Read bytes from an IPC connection until its empty."""
         bdata = bytearray()
-        if sys.platform == 'win32':
-            while True:
+        while True:
+            if sys.platform == 'win32':
                 ov, err = _winapi.ReadFile(self.connection, size, overlapped=True)
                 try:
                     if err == _winapi.ERROR_IO_PENDING:
                         timeout = int(self.timeout * 1000) if self.timeout else _winapi.INFINITE
                         res = _winapi.WaitForSingleObject(ov.event, timeout)
                         if res != _winapi.WAIT_OBJECT_0:
-                            raise IPCException("Bad result from I/O wait: {}".format(res))
+                            raise IPCException(f"Bad result from I/O wait: {res}")
                 except BaseException:
                     ov.cancel()
                     raise
                 _, err = ov.GetOverlappedResult(True)
-                more = ov.getbuffer()
-                if more:
+                if more := ov.getbuffer():
                     bdata.extend(more)
                 if err == 0:
                     # we are done!
@@ -75,8 +74,7 @@ class IPCBase:
                     continue
                 elif err == _winapi.ERROR_OPERATION_ABORTED:
                     raise IPCException("ReadFile operation aborted.")
-        else:
-            while True:
+            else:
                 more = self.connection.recv(size)
                 if not more:
                     break
@@ -96,9 +94,9 @@ class IPCBase:
                         timeout = int(self.timeout * 1000) if self.timeout else _winapi.INFINITE
                         res = _winapi.WaitForSingleObject(ov.event, timeout)
                         if res != _winapi.WAIT_OBJECT_0:
-                            raise IPCException("Bad result from I/O wait: {}".format(res))
+                            raise IPCException(f"Bad result from I/O wait: {res}")
                     elif err != 0:
-                        raise IPCException("Failed writing to pipe with error: {}".format(err))
+                        raise IPCException(f"Failed writing to pipe with error: {err}")
                 except BaseException:
                     ov.cancel()
                     raise
@@ -106,7 +104,7 @@ class IPCBase:
                 assert err == 0, err
                 assert bytes_written == len(data)
             except WindowsError as e:
-                raise IPCException("Failed to write with error: {}".format(e.winerror)) from e
+                raise IPCException(f"Failed to write with error: {e.winerror}") from e
         else:
             self.connection.sendall(data)
             self.connection.shutdown(socket.SHUT_WR)
@@ -129,7 +127,7 @@ class IPCClient(IPCBase):
             try:
                 _winapi.WaitNamedPipe(self.name, timeout)
             except FileNotFoundError as e:
-                raise IPCException("The NamedPipe at {} was not found.".format(self.name)) from e
+                raise IPCException(f"The NamedPipe at {self.name} was not found.") from e
             except WindowsError as e:
                 if e.winerror == _winapi.ERROR_SEM_TIMEOUT:
                     raise IPCException("Timed out waiting for connection.") from e
@@ -176,10 +174,10 @@ class IPCServer(IPCBase):
 
     def __init__(self, name: str, timeout: Optional[float] = None) -> None:
         if sys.platform == 'win32':
-            name = r'\\.\pipe\{}-{}.pipe'.format(
-                name, base64.urlsafe_b64encode(os.urandom(6)).decode())
+            name = f'\\\\.\\pipe\\{name}-{base64.urlsafe_b64encode(os.urandom(6)).decode()}.pipe'
+
         else:
-            name = '{}.sock'.format(name)
+            name = f'{name}.sock'
         super().__init__(name, timeout)
         if sys.platform == 'win32':
             self.connection = _winapi.CreateNamedPipe(self.name,
@@ -198,7 +196,7 @@ class IPCServer(IPCBase):
                                                       )
             if self.connection == -1:  # INVALID_HANDLE_VALUE
                 err = _winapi.GetLastError()
-                raise IPCException('Invalid handle to pipe: {}'.format(err))
+                raise IPCException(f'Invalid handle to pipe: {err}')
         else:
             self.sock_directory = tempfile.mkdtemp()
             sockfile = os.path.join(self.sock_directory, self.name)
@@ -262,7 +260,4 @@ class IPCServer(IPCBase):
 
     @property
     def connection_name(self) -> str:
-        if sys.platform == 'win32':
-            return self.name
-        else:
-            return self.sock.getsockname()
+        return self.name if sys.platform == 'win32' else self.sock.getsockname()

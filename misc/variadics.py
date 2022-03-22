@@ -20,8 +20,7 @@ def expand_template(template: str,
     print()
     for i in range(lower, limit):
         tvs = ', '.join('T{i}'.format(i=j+1) for j in range(i))
-        args = ', '.join(arg_template.format(i=j+1, Ts='T{}'.format(j+1))
-                         for j in range(i))
+        args = ', '.join(arg_template.format(i=j+1, Ts=f'T{j + 1}') for j in range(i))
         print('@overload')
         s = template.format(Ts=tvs, argsTs=args)
         s = s.replace('Tuple[]', 'Tuple[()]')

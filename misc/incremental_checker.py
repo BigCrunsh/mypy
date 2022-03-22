@@ -95,7 +95,7 @@ def initialize_repo(repo_url: str, temp_repo_path: str, branch: str) -> None:
     print("Cloning repo {0} to {1}".format(repo_url, temp_repo_path))
     execute(["git", "clone", repo_url, temp_repo_path])
     if branch is not None:
-        print("Checking out branch {}".format(branch))
+        print(f"Checking out branch {branch}")
         execute(["git", "-C", temp_repo_path, "checkout", branch])
 
 
@@ -115,8 +115,8 @@ def get_commits_starting_at(repo_folder_path: str, start_commit: str) -> List[Tu
 
 
 def get_nth_commit(repo_folder_path: str, n: int) -> Tuple[str, str]:
-    print("Fetching last {} commits (or all, if there are fewer commits than n)".format(n))
-    return get_commits(repo_folder_path, '-{}'.format(n))[0]
+    print(f"Fetching last {n} commits (or all, if there are fewer commits than n)")
+    return get_commits(repo_folder_path, f'-{n}')[0]
 
 
 def run_mypy(target_file_path: Optional[str],
@@ -138,10 +138,7 @@ def run_mypy(target_file_path: Optional[str],
     if daemon:
         command = DAEMON_CMD + ["check", "-v"]
     else:
-        if mypy_script is None:
-            command = ["python3", "-m", "mypy"]
-        else:
-            command = [mypy_script]
+        command = ["python3", "-m", "mypy"] if mypy_script is None else [mypy_script]
         command.extend(["--cache-dir", mypy_cache_path])
         if incremental:
             command.append("--incremental")
@@ -153,9 +150,8 @@ def run_mypy(target_file_path: Optional[str],
     output, stderr, _ = execute(command, False)
     if stderr != "":
         output = stderr
-    else:
-        if daemon:
-            output, stats = filter_daemon_stats(output)
+    elif daemon:
+        output, stats = filter_daemon_stats(output)
     runtime = time.time() - start
     return runtime, output, stats
 
@@ -165,8 +161,7 @@ def filter_daemon_stats(output: str) -> Tuple[str, Dict[str, Any]]:
     lines = output.splitlines()
     output_lines = []
     for line in lines:
-        m = re.match(r'(\w+)\s+:\s+(.*)', line)
-        if m:
+        if m := re.match(r'(\w+)\s+:\s+(.*)', line):
             key, value = m.groups()
             stats[key] = value
         else:
@@ -266,7 +261,7 @@ def test_incremental(commits: List[Tuple[str, str]],
             print("    Incremental: {:.3f} sec".format(runtime))
             print("    Original:    {:.3f} sec".format(expected_runtime))
             if relevant_stats:
-                print("    Stats:       {}".format(relevant_stats))
+                print(f"    Stats:       {relevant_stats}")
     if overall_stats:
         print("Overall stats:", overall_stats)
 
@@ -319,12 +314,12 @@ def test_repo(target_repo_url: str, temp_repo_path: str,
     initialize_repo(target_repo_url, temp_repo_path, branch)
 
     # Stage 2: Get all commits we want to test
-    if range_type == "last":
-        start_commit = get_nth_commit(temp_repo_path, int(range_start))[0]
-    elif range_type == "commit":
+    if range_type == "commit":
         start_commit = range_start
+    elif range_type == "last":
+        start_commit = get_nth_commit(temp_repo_path, int(range_start))[0]
     else:
-        raise RuntimeError("Invalid option: {}".format(range_type))
+        raise RuntimeError(f"Invalid option: {range_type}")
     commits = get_commits_starting_at(temp_repo_path, start_commit)
     if params.limit:
         commits = commits[:params.limit]

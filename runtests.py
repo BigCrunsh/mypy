@@ -43,35 +43,53 @@ MYPYC_OPT_IN = [MYPYC_RUN, MYPYC_RUN_MULTI]
 # parallelization. Each run should have tests that each take a roughly similar
 # time to run.
 cmds = {
-    # Self type check
-    'self': [executable, '-m', 'mypy', '--config-file', 'mypy_self_check.ini', '-p', 'mypy'],
-    # Lint
+    'self': [
+        executable,
+        '-m',
+        'mypy',
+        '--config-file',
+        'mypy_self_check.ini',
+        '-p',
+        'mypy',
+    ],
     'lint': ['flake8', '-j0'],
-    # Fast test cases only (this is the bulk of the test suite)
-    'pytest-fast': ['pytest', '-q', '-k', 'not (%s)' % ' or '.join(ALL_NON_FAST)],
-    # Test cases that invoke mypy (with small inputs)
-    'pytest-cmdline': ['pytest', '-q', '-k', ' or '.join([CMDLINE,
-                                                          EVALUATION,
-                                                          STUBGEN_CMD,
-                                                          STUBGEN_PY])],
-    # Test cases that may take seconds to run each
-    'pytest-slow': ['pytest', '-q', '-k', ' or '.join(
-        [SAMPLES,
-         TYPESHED,
-         PEP561,
-         DAEMON,
-         MYPYC_EXTERNAL,
-         MYPYC_COMMAND_LINE,
-         ERROR_STREAM])],
-    # Test cases to run in typeshed CI
-    'typeshed-ci': ['pytest', '-q', '-k', ' or '.join([CMDLINE,
-                                                       EVALUATION,
-                                                       SAMPLES,
-                                                       TYPESHED])],
-    # Mypyc tests that aren't run by default, since they are slow and rarely
-    # fail for commits that don't touch mypyc
+    'pytest-fast': [
+        'pytest',
+        '-q',
+        '-k',
+        f"not ({' or '.join(ALL_NON_FAST)})",
+    ],
+    'pytest-cmdline': [
+        'pytest',
+        '-q',
+        '-k',
+        ' or '.join([CMDLINE, EVALUATION, STUBGEN_CMD, STUBGEN_PY]),
+    ],
+    'pytest-slow': [
+        'pytest',
+        '-q',
+        '-k',
+        ' or '.join(
+            [
+                SAMPLES,
+                TYPESHED,
+                PEP561,
+                DAEMON,
+                MYPYC_EXTERNAL,
+                MYPYC_COMMAND_LINE,
+                ERROR_STREAM,
+            ]
+        ),
+    ],
+    'typeshed-ci': [
+        'pytest',
+        '-q',
+        '-k',
+        ' or '.join([CMDLINE, EVALUATION, SAMPLES, TYPESHED]),
+    ],
     'mypyc-extra': ['pytest', '-q', '-k', ' or '.join(MYPYC_OPT_IN)],
 }
+
 
 # Stop run immediately if these commands fail
 FAST_FAIL = ['self', 'lint']
@@ -84,7 +102,7 @@ assert all(cmd in cmds for cmd in FAST_FAIL)
 def run_cmd(name: str) -> int:
     status = 0
     cmd = cmds[name]
-    print('run %s: %s' % (name, cmd))
+    print(f'run {name}: {cmd}')
     proc = subprocess.run(cmd, stderr=subprocess.STDOUT)
     if proc.returncode:
         print('\nFAILED: %s' % name)
@@ -96,16 +114,15 @@ def run_cmd(name: str) -> int:
 
 def start_background_cmd(name: str) -> Popen:
     cmd = cmds[name]
-    proc = subprocess.Popen(cmd,
+    return subprocess.Popen(cmd,
                             stderr=subprocess.STDOUT,
                             stdout=subprocess.PIPE)
-    return proc
 
 
 def wait_background_cmd(name: str, proc: Popen) -> int:
     output = proc.communicate()[0]
     status = proc.returncode
-    print('run %s: %s' % (name, cmds[name]))
+    print(f'run {name}: {cmds[name]}')
     if status:
         print(output.decode().rstrip())
         print('\nFAILED: %s' % name)
@@ -118,7 +135,7 @@ def main() -> None:
     prog, *args = argv
 
     if not set(args).issubset(cmds):
-        print("usage:", prog, " ".join('[%s]' % k for k in cmds))
+        print("usage:", prog, " ".join(f'[{k}]' for k in cmds))
         print()
         print('Run the given tests. If given no arguments, run everything except mypyc-extra.')
         exit(1)
@@ -131,17 +148,14 @@ def main() -> None:
     if 'self' in args and 'lint' in args:
         # Perform lint and self check in parallel as it's faster.
         proc = start_background_cmd('lint')
-        cmd_status = run_cmd('self')
-        if cmd_status:
+        if cmd_status := run_cmd('self'):
             status = cmd_status
-        cmd_status = wait_background_cmd('lint', proc)
-        if cmd_status:
+        if cmd_status := wait_background_cmd('lint', proc):
             status = cmd_status
         args = [arg for arg in args if arg not in ('self', 'lint')]
 
     for arg in args:
-        cmd_status = run_cmd(arg)
-        if cmd_status:
+        if cmd_status := run_cmd(arg):
             status = cmd_status
 
     exit(status)

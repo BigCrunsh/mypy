@@ -28,12 +28,16 @@ def parse_version(v: str) -> Tuple[int, int]:
     m = re.match(r'\A(\d)\.(\d+)\Z', v)
     if not m:
         raise argparse.ArgumentTypeError(
-            "Invalid python version '{}' (expected format: 'x.y')".format(v))
+            f"Invalid python version '{v}' (expected format: 'x.y')"
+        )
+
     major, minor = int(m.group(1)), int(m.group(2))
     if major == 2:
         if minor != 7:
             raise argparse.ArgumentTypeError(
-                "Python 2.{} is not supported (must be 2.7)".format(minor))
+                f"Python 2.{minor} is not supported (must be 2.7)"
+            )
+
     elif major == 3:
         if minor < defaults.PYTHON3_VERSION_MIN[1]:
             raise argparse.ArgumentTypeError(
@@ -41,7 +45,9 @@ def parse_version(v: str) -> Tuple[int, int]:
                                                                     *defaults.PYTHON3_VERSION_MIN))
     else:
         raise argparse.ArgumentTypeError(
-            "Python major version '{}' out of range (must be 2 or 3)".format(major))
+            f"Python major version '{major}' out of range (must be 2 or 3)"
+        )
+
     return major, minor
 
 
@@ -78,8 +84,7 @@ def split_and_match_files_list(paths: Sequence[str]) -> List[str]:
 
     for path in paths:
         path = expand_path(path.strip())
-        globbed_files = fileglob.glob(path, recursive=True)
-        if globbed_files:
+        if globbed_files := fileglob.glob(path, recursive=True):
             expanded_paths.extend(globbed_files)
         else:
             expanded_paths.append(path)
@@ -104,8 +109,10 @@ def check_follow_imports(choice: str) -> str:
     if choice not in choices:
         raise argparse.ArgumentTypeError(
             "invalid choice '{}' (choose from {})".format(
-                choice,
-                ', '.join("'{}'".format(x) for x in choices)))
+                choice, ', '.join(f"'{x}'" for x in choices)
+            )
+        )
+
     return choice
 
 
@@ -196,7 +203,7 @@ def parse_config_file(options: Options, set_strict_flags: Callable[[], None],
                 parser = config_parser
                 config_types = ini_config_types
         except (tomllib.TOMLDecodeError, configparser.Error, ConfigTOMLValueError) as err:
-            print("%s: %s" % (config_file, err), file=stderr)
+            print(f"{config_file}: {err}", file=stderr)
         else:
             if config_file in defaults.SHARED_CONFIG_FILES and 'mypy' not in parser:
                 continue
@@ -209,31 +216,34 @@ def parse_config_file(options: Options, set_strict_flags: Callable[[], None],
     os.environ['MYPY_CONFIG_FILE_DIR'] = os.path.dirname(
             os.path.abspath(config_file))
 
-    if 'mypy' not in parser:
-        if filename or file_read not in defaults.SHARED_CONFIG_FILES:
-            print("%s: No [mypy] section in config file" % file_read, file=stderr)
-    else:
+    if 'mypy' in parser:
         section = parser['mypy']
-        prefix = '%s: [%s]: ' % (file_read, 'mypy')
+        prefix = f'{file_read}: [mypy]: '
         updates, report_dirs = parse_section(
             prefix, options, set_strict_flags, section, config_types, stderr)
         for k, v in updates.items():
             setattr(options, k, v)
         options.report_dirs.update(report_dirs)
 
+    elif filename or file_read not in defaults.SHARED_CONFIG_FILES:
+        print(f"{file_read}: No [mypy] section in config file", file=stderr)
     for name, section in parser.items():
         if name.startswith('mypy-'):
             prefix = get_prefix(file_read, name)
             updates, report_dirs = parse_section(
                 prefix, options, set_strict_flags, section, config_types, stderr)
             if report_dirs:
-                print("%sPer-module sections should not specify reports (%s)" %
-                      (prefix, ', '.join(s + '_report' for s in sorted(report_dirs))),
-                      file=stderr)
+                print(
+                    f"{prefix}Per-module sections should not specify reports ({', '.join(f'{s}_report' for s in sorted(report_dirs))})",
+                    file=stderr,
+                )
+
             if set(updates) - PER_MODULE_OPTIONS:
-                print("%sPer-module sections should only specify per-module flags (%s)" %
-                      (prefix, ', '.join(sorted(set(updates) - PER_MODULE_OPTIONS))),
-                      file=stderr)
+                print(
+                    f"{prefix}Per-module sections should only specify per-module flags ({', '.join(sorted(set(updates) - PER_MODULE_OPTIONS))})",
+                    file=stderr,
+                )
+
                 updates = {k: v for k, v in updates.items() if k in PER_MODULE_OPTIONS}
             globs = name[5:]
             for glob in globs.split(','):
@@ -258,7 +268,7 @@ def get_prefix(file_read: str, name: str) -> str:
     else:
         module_name_str = name
 
-    return '%s: [%s]: ' % (file_read, module_name_str)
+    return f'{file_read}: [{module_name_str}]: '
 
 
 def is_toml(filename: str) -> bool:
@@ -322,7 +332,7 @@ def destructure_overrides(toml_data: Dict[str, Any]) -> Dict[str, Any]:
         for module in modules:
             module_overrides = override.copy()
             del module_overrides['module']
-            old_config_name = 'mypy-%s' % module
+            old_config_name = f'mypy-{module}'
             if old_config_name not in result:
                 result[old_config_name] = module_overrides
             else:
@@ -369,8 +379,7 @@ def parse_section(prefix: str, template: Options,
                     if report_type in defaults.REPORTER_NAMES:
                         report_dirs[report_type] = str(section[key])
                     else:
-                        print("%sUnrecognized report type: %s" % (prefix, key),
-                              file=stderr)
+                        print(f"{prefix}Unrecognized report type: {key}", file=stderr)
                     continue
                 if key.startswith('x_'):
                     pass  # Don't complain about `x_blah` flags
@@ -378,16 +387,13 @@ def parse_section(prefix: str, template: Options,
                     options_key = key[3:]
                     invert = True
                 elif key.startswith('allow') and hasattr(template, 'dis' + key):
-                    options_key = 'dis' + key
+                    options_key = f'dis{key}'
                     invert = True
                 elif key.startswith('disallow') and hasattr(template, key[3:]):
                     options_key = key[3:]
                     invert = True
-                elif key == 'strict':
-                    pass  # Special handling below
-                else:
-                    print("%sUnrecognized option: %s = %s" % (prefix, key, section[key]),
-                          file=stderr)
+                elif key != 'strict':
+                    print(f"{prefix}Unrecognized option: {key} = {section[key]}", file=stderr)
                 if invert:
                     dv = getattr(template, options_key, None)
                 else:
@@ -404,19 +410,18 @@ def parse_section(prefix: str, template: Options,
                     v = not v
             elif callable(ct):
                 if invert:
-                    print("%sCan not invert non-boolean key %s" % (prefix, options_key),
-                          file=stderr)
+                    print(f"{prefix}Can not invert non-boolean key {options_key}", file=stderr)
                     continue
                 try:
                     v = ct(section.get(key))
                 except argparse.ArgumentTypeError as err:
-                    print("%s%s: %s" % (prefix, key, err), file=stderr)
+                    print(f"{prefix}{key}: {err}", file=stderr)
                     continue
             else:
                 print("%sDon't know what type %s should have" % (prefix, key), file=stderr)
                 continue
         except ValueError as err:
-            print("%s%s: %s" % (prefix, key, err), file=stderr)
+            print(f"{prefix}{key}: {err}", file=stderr)
             continue
         if key == 'strict':
             if v:
@@ -433,9 +438,8 @@ def parse_section(prefix: str, template: Options,
         if key == 'almost_silent':
             print("%salmost_silent has been replaced by "
                   "follow_imports=error" % prefix, file=stderr)
-            if v:
-                if 'follow_imports' not in results:
-                    results['follow_imports'] = 'error'
+            if v and 'follow_imports' not in results:
+                results['follow_imports'] = 'error'
         results[options_key] = v
     return results, report_dirs
 
@@ -447,7 +451,7 @@ def convert_to_boolean(value: Optional[Any]) -> bool:
     if not isinstance(value, str):
         value = str(value)
     if value.lower() not in configparser.RawConfigParser.BOOLEAN_STATES:
-        raise ValueError('Not a boolean: %s' % value)
+        raise ValueError(f'Not a boolean: {value}')
     return configparser.RawConfigParser.BOOLEAN_STATES[value.lower()]
 
 
@@ -552,7 +556,7 @@ def get_config_module_names(filename: Optional[str], modules: List[str]) -> str:
         return ''
 
     if not is_toml(filename):
-        return ", ".join("[mypy-%s]" % module for module in modules)
+        return ", ".join(f"[mypy-{module}]" for module in modules)
 
     return "module = ['%s']" % ("', '".join(sorted(modules)))
 

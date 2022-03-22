@@ -33,31 +33,28 @@ def collect_memory_stats() -> Tuple[Dict[str, int],
         n = type(obj).__name__
         if hasattr(obj, '__dict__'):
             # Keep track of which class a particular __dict__ is associated with.
-            inferred[id(obj.__dict__)] = '%s (__dict__)' % n
+            inferred[id(obj.__dict__)] = f'{n} (__dict__)'
         if isinstance(obj, (Node, Type)):  # type: ignore
             if hasattr(obj, '__dict__'):
                 for x in obj.__dict__.values():
                     if isinstance(x, list):
                         # Keep track of which node a list is associated with.
-                        inferred[id(x)] = '%s (list)' % n
+                        inferred[id(x)] = f'{n} (list)'
                     if isinstance(x, tuple):
                         # Keep track of which node a list is associated with.
-                        inferred[id(x)] = '%s (tuple)' % n
+                        inferred[id(x)] = f'{n} (tuple)'
 
             for k in get_class_descriptors(type(obj)):
                 x = getattr(obj, k, None)
                 if isinstance(x, list):
-                    inferred[id(x)] = '%s (list)' % n
+                    inferred[id(x)] = f'{n} (list)'
                 if isinstance(x, tuple):
-                    inferred[id(x)] = '%s (tuple)' % n
+                    inferred[id(x)] = f'{n} (tuple)'
 
     freqs: Dict[str, int] = {}
     memuse: Dict[str, int] = {}
     for obj in objs:
-        if id(obj) in inferred:
-            name = inferred[id(obj)]
-        else:
-            name = type(obj).__name__
+        name = inferred.get(id(obj), type(obj).__name__)
         freqs[name] = freqs.get(name, 0) + 1
         memuse[name] = memuse.get(name, 0) + sys.getsizeof(obj)
 
@@ -76,12 +73,10 @@ def print_memory_profile(run_gc: bool = True) -> None:
     print('%7s  %7s  %7s  %s' % ('Freq', 'Size(k)', 'AvgSize', 'Type'))
     print('-------------------------------------------')
     totalmem = 0
-    i = 0
-    for n, mem in sorted(memuse.items(), key=lambda x: -x[1]):
+    for i, (n, mem) in enumerate(sorted(memuse.items(), key=lambda x: -x[1])):
         f = freqs[n]
         if i < 50:
             print('%7d  %7d  %7.0f  %s' % (f, mem // 1024, mem / f, n))
-        i += 1
         totalmem += mem
     print()
     print('Mem usage RSS   ', system_memuse // 1024)

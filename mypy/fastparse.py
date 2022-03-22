@@ -248,16 +248,14 @@ def parse_type_comment(type_comment: str,
     try:
         typ = ast3_parse(type_comment, '<type_comment>', 'eval')
     except SyntaxError:
-        if errors is not None:
-            stripped_type = type_comment.split("#", 2)[0].strip()
-            err_msg = '{} "{}"'.format(TYPE_COMMENT_SYNTAX_ERROR, stripped_type)
-            errors.report(line, column, err_msg, blocker=True, code=codes.SYNTAX)
-            return None, None
-        else:
+        if errors is None:
             raise
+        stripped_type = type_comment.split("#", 2)[0].strip()
+        err_msg = f'{TYPE_COMMENT_SYNTAX_ERROR} "{stripped_type}"'
+        errors.report(line, column, err_msg, blocker=True, code=codes.SYNTAX)
+        return None, None
     else:
-        extra_ignore = TYPE_IGNORE_PATTERN.match(type_comment)
-        if extra_ignore:
+        if extra_ignore := TYPE_IGNORE_PATTERN.match(type_comment):
             # Typeshed has a non-optional return type for group!
             tag: Optional[str] = cast(Any, extra_ignore).group(1)
             ignored: Optional[List[str]] = parse_type_ignore_tag(tag)
@@ -364,7 +362,7 @@ class ASTConverter:
         typeobj = type(node)
         visitor = self.visitor_cache.get(typeobj)
         if visitor is None:
-            method = 'visit_' + node.__class__.__name__
+            method = f'visit_{node.__class__.__name__}'
             visitor = getattr(self, method)
             self.visitor_cache[typeobj] = visitor
         return visitor(node)
@@ -416,15 +414,14 @@ class ASTConverter:
                                type_comment: Optional[str]) -> Optional[ProperType]:
         if type_comment is None:
             return None
-        else:
-            lineno = n.lineno
-            extra_ignore, typ = parse_type_comment(type_comment,
-                                                   lineno,
-                                                   n.col_offset,
-                                                   self.errors)
-            if extra_ignore is not None:
-                self.type_ignores[lineno] = extra_ignore
-            return typ
+        lineno = n.lineno
+        extra_ignore, typ = parse_type_comment(type_comment,
+                                               lineno,
+                                               n.col_offset,
+                                               self.errors)
+        if extra_ignore is not None:
+            self.type_ignores[lineno] = extra_ignore
+        return typ
 
     op_map: Final[Dict[typing.Type[AST], str]] = {
         ast3.Add: '+',
@@ -445,7 +442,7 @@ class ASTConverter:
     def from_operator(self, op: ast3.operator) -> str:
         op_name = ASTConverter.op_map.get(type(op))
         if op_name is None:
-            raise RuntimeError('Unknown operator ' + str(type(op)))
+            raise RuntimeError(f'Unknown operator {str(type(op))}')
         else:
             return op_name
 
@@ -465,7 +462,7 @@ class ASTConverter:
     def from_comp_operator(self, op: ast3.cmpop) -> str:
         op_name = ASTConverter.comp_op_map.get(type(op))
         if op_name is None:
-            raise RuntimeError('Unknown comparison operator ' + str(type(op)))
+            raise RuntimeError(f'Unknown comparison operator {str(type(op))}')
         else:
             return op_name
 

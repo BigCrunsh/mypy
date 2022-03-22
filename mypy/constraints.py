@@ -43,10 +43,8 @@ class Constraint:
         self.target = target
 
     def __repr__(self) -> str:
-        op_str = '<:'
-        if self.op == SUPERTYPE_OF:
-            op_str = ':>'
-        return '{} {} {}'.format(self.type_var, op_str, self.target)
+        op_str = ':>' if self.op == SUPERTYPE_OF else '<:'
+        return f'{self.type_var} {op_str} {self.target}'
 
 
 def infer_constraints_for_callable(
@@ -270,7 +268,7 @@ def any_constraints(options: List[Optional[List[Constraint]]], eager: bool) -> L
                 else:
                     merged_option = None
                 merged_options.append(merged_option)
-            return any_constraints([option for option in merged_options], eager)
+            return any_constraints(list(merged_options), eager)
     # Otherwise, there are either no valid options or multiple, inconsistent valid
     # options. Give up and deduce nothing.
     return []
@@ -280,10 +278,7 @@ def is_same_constraints(x: List[Constraint], y: List[Constraint]) -> bool:
     for c1 in x:
         if not any(is_same_constraint(c1, c2) for c2 in y):
             return False
-    for c1 in y:
-        if not any(is_same_constraint(c1, c2) for c2 in x):
-            return False
-    return True
+    return all(any(is_same_constraint(c1, c2) for c2 in x) for c1 in y)
 
 
 def is_same_constraint(c1: Constraint, c2: Constraint) -> bool:
@@ -329,8 +324,7 @@ def _is_similar_constraints(x: List[Constraint], y: List[Constraint]) -> bool:
 
 
 def simplify_away_incomplete_types(types: Iterable[Type]) -> List[Type]:
-    complete = [typ for typ in types if is_complete_type(typ)]
-    if complete:
+    if complete := [typ for typ in types if is_complete_type(typ)]:
         return complete
     else:
         return list(types)
@@ -409,20 +403,24 @@ class ConstraintBuilderVisitor(TypeVisitor[List[Constraint]]):
     def visit_instance(self, template: Instance) -> List[Constraint]:
         original_actual = actual = self.actual
         res: List[Constraint] = []
-        if isinstance(actual, (CallableType, Overloaded)) and template.type.is_protocol:
-            if template.type.protocol_members == ['__call__']:
-                # Special case: a generic callback protocol
-                if not any(mypy.sametypes.is_same_type(template, t)
-                           for t in template.type.inferring):
-                    template.type.inferring.append(template)
-                    call = mypy.subtypes.find_member('__call__', template, actual,
-                                                     is_operator=True)
-                    assert call is not None
-                    if mypy.subtypes.is_subtype(actual, erase_typevars(call)):
-                        subres = infer_constraints(call, actual, self.direction)
-                        res.extend(subres)
-                    template.type.inferring.pop()
-                    return res
+        if (
+            isinstance(actual, (CallableType, Overloaded))
+            and template.type.is_protocol
+            and template.type.protocol_members == ['__call__']
+            and not any(
+                mypy.sametypes.is_same_type(template, t)
+                for t in template.type.inferring
+            )
+        ):
+            template.type.inferring.append(template)
+            call = mypy.subtypes.find_member('__call__', template, actual,
+                                             is_operator=True)
+            assert call is not None
+            if mypy.subtypes.is_subtype(actual, erase_typevars(call)):
+                subres = infer_constraints(call, actual, self.direction)
+                res.extend(subres)
+            template.type.inferring.pop()
+            return res
         if isinstance(actual, CallableType) and actual.fallback is not None:
             actual = actual.fallback
         if isinstance(actual, Overloaded) and actual.fallback is not None:
@@ -514,9 +512,14 @@ class ConstraintBuilderVisitor(TypeVisitor[List[Constraint]]):
                                      mypy.typeops.tuple_fallback(actual),
                                      self.direction)
         elif isinstance(actual, TypeVarType):
-            if not actual.values:
-                return infer_constraints(template, actual.upper_bound, self.direction)
-            return []
+            return (
+                []
+                if actual.values
+                else infer_constraints(
+                    template, actual.upper_bound, self.direction
+                )
+            )
+
         else:
             return []
 
@@ -594,11 +597,9 @@ class ConstraintBuilderVisitor(TypeVisitor[List[Constraint]]):
         elif isinstance(self.actual, TypeType):
             return infer_constraints(template.ret_type, self.actual.item, self.direction)
         elif isinstance(self.actual, Instance):
-            # Instances with __call__ method defined are considered structural
-            # subtypes of Callable with a compatible signature.
-            call = mypy.subtypes.find_member('__call__', self.actual, self.actual,
-                                             is_operator=True)
-            if call:
+            if call := mypy.subtypes.find_member(
+                '__call__', self.actual, self.actual, is_operator=True
+            ):
                 return infer_constraints(template, call, self.direction)
             else:
                 return []
@@ -650,7 +651,7 @@ class ConstraintBuilderVisitor(TypeVisitor[List[Constraint]]):
                        " (should have been handled in infer_constraints)")
 
     def visit_type_alias_type(self, template: TypeAliasType) -> List[Constraint]:
-        assert False, "This should be never called, got {}".format(template)
+        assert False, f"This should be never called, got {template}"
 
     def infer_against_any(self, types: Iterable[Type], any_type: AnyType) -> List[Constraint]:
         res: List[Constraint] = []
@@ -693,7 +694,7 @@ def neg_op(op: int) -> int:
     elif op == SUPERTYPE_OF:
         return SUBTYPE_OF
     else:
-        raise ValueError('Invalid operator {}'.format(op))
+        raise ValueError(f'Invalid operator {op}')
 
 
 def find_matching_overload_item(overloaded: Overloaded, template: CallableType) -> CallableType:
@@ -715,16 +716,13 @@ def find_matching_overload_items(overloaded: Overloaded,
                                  template: CallableType) -> List[CallableType]:
     """Like find_matching_overload_item, but return all matches, not just the first."""
     items = overloaded.items
-    res = []
-    for item in items:
-        # Return type may be indeterminate in the template, so ignore it when performing a
-        # subtype check.
-        if mypy.subtypes.is_callable_compatible(item, template,
-                                                is_compat=mypy.subtypes.is_subtype,
-                                                ignore_return=True):
-            res.append(item)
-    if not res:
-        # Falling back to all items if we can't find a match is pretty arbitrary, but
-        # it maintains backward compatibility.
-        res = items[:]
-    return res
+    return [
+        item
+        for item in items
+        if mypy.subtypes.is_callable_compatible(
+            item,
+            template,
+            is_compat=mypy.subtypes.is_subtype,
+            ignore_return=True,
+        )
+    ] or items[:]
